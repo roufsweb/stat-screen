@@ -11,7 +11,12 @@ private:
     int pinReset;
     int pinSDA;
     int pinSCK;
+#ifdef ARDUINO_ARCH_MBED
+    arduino::MbedSPI* spi; // Pointer to hardware SPI
+#else
     SPIClassRP2040* spi; // Pointer to hardware SPI0 or SPI1
+#endif
+
 
     void writeCommand(uint8_t cmd) {
         digitalWrite(pinDC, LOW);
@@ -50,12 +55,16 @@ public:
     ST7789Driver(int w = 240, int h = 240, int pin_dc = 20, int pin_cs = 17, int pin_reset = 16, int pin_sda = 19, int pin_sck = 18)
         : DisplayDriver(w, h), pinDC(pin_dc), pinCS(pin_cs), pinReset(pin_reset), pinSDA(pin_sda), pinSCK(pin_sck) {
         
+#ifdef ARDUINO_ARCH_MBED
+        spi = &SPI;
+#else
         // Select appropriate SPI hardware port based on the MOSI pin
         if (pinSDA == 19 || pinSDA == 11 || pinSDA == 3) {
             spi = &SPI;   // Hardware SPI0
         } else {
             spi = &SPI1;  // Hardware SPI1
         }
+#endif
     }
 
     void init() override {
@@ -65,8 +74,10 @@ public:
         digitalWrite(pinCS, HIGH);
 
         // Configure hardware SPI pins
+#ifndef ARDUINO_ARCH_MBED
         spi->setTX(pinSDA);
         spi->setSCK(pinSCK);
+#endif
         spi->begin();
 
         // Perform hardware reset
@@ -141,7 +152,11 @@ public:
         digitalWrite(pinCS, LOW);
 
         // Hardware transfer with maximum clock rate
+#ifdef ARDUINO_ARCH_MBED
+        spi->transfer((void*)frameBuffer, width * height * 2);
+#else
         spi->transfer((void*)frameBuffer, nullptr, width * height * 2);
+#endif
 
         digitalWrite(pinCS, HIGH);
         spi->endTransaction();

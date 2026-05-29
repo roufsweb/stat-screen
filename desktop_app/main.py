@@ -3,7 +3,7 @@ import logging
 from PySide6.QtCore import Qt, Slot, QTimer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QLabel, QPushButton, QComboBox, QGroupBox, QGridLayout, QMessageBox, QSpacerItem, QSizePolicy
+    QLabel, QPushButton, QComboBox, QGroupBox, QGridLayout, QMessageBox, QSpacerItem, QSizePolicy, QFrame
 )
 from PySide6.QtGui import QFont, QColor, QIcon
 
