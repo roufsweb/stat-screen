@@ -1,8 +1,12 @@
 import time
 import subprocess
 import os
+import sys
 import psutil
 from PySide6.QtCore import QThread, Signal
+
+# Suppress console flashing on Windows for PyInstaller --noconsole
+CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 class DiagnosticsThread(QThread):
     """
@@ -42,7 +46,7 @@ class DiagnosticsThread(QThread):
         # 1. Standard WMI thermal zone query (Windows native)
         try:
             cmd = "wmic /namespace:\\\\root\\wmi PATH MSAcpi_ThermalZoneTemperature get CurrentTemperature"
-            out = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
+            out = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
             lines = [l.strip() for l in out.split('\n') if l.strip()]
             if len(lines) > 1:
                 # Value is in tenths of Kelvin
@@ -83,7 +87,7 @@ class DiagnosticsThread(QThread):
             # nvidia-smi output format: utilization.gpu [%], temperature.gpu, memory.used [MiB], memory.total [MiB]
             out = subprocess.check_output(
                 ["nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"],
-                text=True, stderr=subprocess.DEVNULL
+                text=True, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW
             )
             parts = out.strip().split(',')
             if len(parts) == 4:
