@@ -46,6 +46,43 @@ graph TD
 
 ---
 
+## 📡 MicroTelemetry Protocol (MTP) Specification v1.0
+
+The communication protocol transfers real-time telemetry packets from the PC to the RP2040 over a virtual USB COM serial port. Packets are streamed as a raw **32-byte binary chunk** every 500ms, minimizing host overhead.
+
+### Byte-Level Packet Layout
+
+| Offset | Type | Field | Description | Range |
+| :--- | :--- | :--- | :--- | :--- |
+| **0** | `uint8_t` | `magic1` | Constant `0xAA` (Magic Header Byte 1) | `0xAA` |
+| **1** | `uint8_t` | `magic2` | Constant `0x55` (Magic Header Byte 2) | `0x55` |
+| **2** | `uint8_t` | `packet_type` | `0x01` = Real-time Telemetry, `0x02` = Configuration | `0x01` / `0x02` |
+| **3** | `uint8_t` | `cpu_load` | CPU utilization percentage | `0 - 100` |
+| **4** | `uint8_t` | `cpu_temp` | CPU temperature in °C | `0 - 120` |
+| **5-6** | `uint16_t`| `cpu_freq` | CPU clock speed in MHz (Little-Endian) | `0 - 65535` |
+| **7** | `uint8_t` | `gpu_load` | GPU utilization percentage | `0 - 100` |
+| **8** | `uint8_t` | `gpu_temp` | GPU temperature in °C | `0 - 120` |
+| **9** | `uint8_t` | `gpu_vram` | GPU VRAM utilization percentage | `0 - 100` |
+| **10** | `uint8_t` | `ram_percent`| System RAM utilization percentage | `0 - 100` |
+| **11-12**| `uint16_t`| `ram_used_mb`| System RAM used in Megabytes (Little-Endian) | `0 - 65535` |
+| **13-14**| `uint16_t`| `ram_total_mb`| System RAM total in Megabytes (Little-Endian) | `0 - 65535` |
+| **15** | `uint8_t` | `disk_percent`| C: Drive disk utilization percentage | `0 - 100` |
+| **16-19**| `float` | `net_dl_rate` | Network Download Rate in MB/s (32-bit Float) | Any |
+| **20-23**| `float` | `net_ul_rate` | Network Upload Rate in MB/s (32-bit Float) | Any |
+| **24** | `uint8_t` | `active_cards`| Toggled screens mask: Bit0 (CPU), Bit1 (GPU), Bit2 (SYSTEM) | `0x00 - 0x07` |
+| **25** | `uint8_t` | `cycle_sec` | Screen loop cycle interval in seconds | `1 - 10` |
+| **26-29**| `uint32_t`| `uptime_sec` | Host PC uptime or system epoch in seconds (Little-Endian)| `0 - 4.29B` |
+| **30** | `uint8_t` | `reserved` | Alignment padding (constant `0x00`) | `0x00` |
+| **31** | `uint8_t` | `checksum` | XOR checksum of bytes 0 to 30 | `0x00 - 0xFF` |
+
+### CRC Integrity & Synchronization
+* **Magic Header Lock:** The Pico firmware operates a non-blocking sliding-window parser. It constantly scans serial bytes, resetting its offset buffer unless it detects the sequential magic bytes `0xAA 0x55`, providing immunity to startup noise or serial buffer alignment shifts.
+* **Integrity Validation:** Every telemetry packet is validated by checking the final byte against an **XOR checksum** computed across all previous 31 bytes:
+  $$\text{Checksum} = \bigoplus_{i=0}^{30} \text{Byte}_i$$
+  Any packet failing the checksum check is discarded immediately to prevent diagnostic glitches.
+
+---
+
 ## 📂 Repository Structure
 
 * **`pico_firmware/`:** Standalone C++ Arduino-Pico project folder.
