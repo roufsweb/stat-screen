@@ -348,7 +348,9 @@ public:
     void pushFrame(const uint16_t* frameBuffer) override {
         set_window(0, 0, 127, 127);
         set_cs(0);
-        NOKIA_CLOCK_DELAY();
+
+        const uint32_t sda_mask = (1ul << pinSDA);
+        const uint32_t sck_mask = (1ul << pinSCK);
 
         for (int i = 0; i < 16384; ++i) {
             uint16_t pixel = frameBuffer[i];
@@ -356,44 +358,76 @@ public:
             uint8_t lo = pixel & 0xFF;
 
             // --- Send High Byte ---
-            set_sck(0);
-            NOKIA_CLOCK_DELAY();
-            set_sda(1); // 9th bit = 1 (Data)
-            NOKIA_CLOCK_DELAY();
-            set_sck(1);
-            NOKIA_CLOCK_DELAY();
-            set_sck(0);
-            NOKIA_CLOCK_DELAY();
-            for (int mask = 0x80; mask > 0; mask >>= 1) {
-                set_sda(hi & mask);
-                NOKIA_CLOCK_DELAY();
-                set_sck(1);
-                NOKIA_CLOCK_DELAY();
-                set_sck(0);
-                NOKIA_CLOCK_DELAY();
-            }
+            // 9th bit = 1 (Data)
+            sio_hw->gpio_clr = sck_mask;
+            sio_hw->gpio_set = sda_mask;
+            asm volatile("nop\n nop\n");
+            sio_hw->gpio_set = sck_mask;
+            asm volatile("nop\n nop\n");
+            sio_hw->gpio_clr = sck_mask;
+            asm volatile("nop\n nop\n");
+
+            // Bit 7
+            if (hi & 0x80) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 6
+            if (hi & 0x40) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 5
+            if (hi & 0x20) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 4
+            if (hi & 0x10) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 3
+            if (hi & 0x08) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 2
+            if (hi & 0x04) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 1
+            if (hi & 0x02) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 0
+            if (hi & 0x01) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
 
             // --- Send Low Byte ---
-            set_sck(0);
-            NOKIA_CLOCK_DELAY();
-            set_sda(1); // 9th bit = 1 (Data)
-            NOKIA_CLOCK_DELAY();
-            set_sck(1);
-            NOKIA_CLOCK_DELAY();
-            set_sck(0);
-            NOKIA_CLOCK_DELAY();
-            for (int mask = 0x80; mask > 0; mask >>= 1) {
-                set_sda(lo & mask);
-                NOKIA_CLOCK_DELAY();
-                set_sck(1);
-                NOKIA_CLOCK_DELAY();
-                set_sck(0);
-                NOKIA_CLOCK_DELAY();
-            }
+            // 9th bit = 1 (Data)
+            sio_hw->gpio_set = sda_mask;
+            asm volatile("nop\n nop\n");
+            sio_hw->gpio_set = sck_mask;
+            asm volatile("nop\n nop\n");
+            sio_hw->gpio_clr = sck_mask;
+            asm volatile("nop\n nop\n");
+
+            // Bit 7
+            if (lo & 0x80) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 6
+            if (lo & 0x40) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 5
+            if (lo & 0x20) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 4
+            if (lo & 0x10) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 3
+            if (lo & 0x08) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 2
+            if (lo & 0x04) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 1
+            if (lo & 0x02) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
+            // Bit 0
+            if (lo & 0x01) sio_hw->gpio_set = sda_mask; else sio_hw->gpio_clr = sda_mask;
+            sio_hw->gpio_set = sck_mask; asm volatile("nop\n"); sio_hw->gpio_clr = sck_mask;
         }
 
         set_cs(1);
-        NOKIA_CLOCK_DELAY();
     }
 };
 
