@@ -1,9 +1,12 @@
 import sys
 import logging
+import os
+import winreg
 from PySide6.QtCore import Qt, Slot, QTimer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QLabel, QPushButton, QComboBox, QGroupBox, QGridLayout, QMessageBox, QSpacerItem, QSizePolicy, QFrame
+    QLabel, QPushButton, QComboBox, QGroupBox, QGridLayout, QMessageBox, 
+    QSpacerItem, QSizePolicy, QFrame, QScrollArea, QSystemTrayIcon, QMenu
 )
 from PySide6.QtGui import QFont, QColor, QIcon
 
@@ -16,7 +19,13 @@ from simulator import VirtualLCDSimulator
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ROUFESWEB OS - Hardware Status Linker")
+        self.setWindowTitle("Roufesweb Cyber Stat Screen")
+        
+        # Load premium custom application icon
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+            
         self.setGeometry(100, 100, 940, 580)
         self.setFixedSize(940, 580)
         
@@ -76,11 +85,18 @@ class MainWindow(QMainWindow):
         # Set Nokia 105 Screen (128x128) as the default target index at startup
         self.combo_res.setCurrentIndex(1)
         
+        # Initialize System Tray
+        self.init_tray()
+        
+        # Windows Startup Registry Config
+        self.check_startup_status()
+        
         # Auto-Scan ports at startup
         self.refresh_com_ports()
         
         # Launch diagnostic scanner thread
         self.start_diagnostics()
+
 
     def init_ui(self):
         # Master widget
@@ -184,13 +200,49 @@ class MainWindow(QMainWindow):
 
         # Hardware display config panel
         hw_panel = GlassPanel(self, "#1E2A38")
-        hw_layout = QVBoxLayout(hw_panel)
-        hw_layout.setContentsMargins(12, 12, 12, 12)
+        hw_outer_layout = QVBoxLayout(hw_panel)
+        hw_outer_layout.setContentsMargins(12, 12, 6, 12)
+        hw_outer_layout.setSpacing(6)
         
         lbl_hw_title = QLabel("⚙️ SCREEN CONFIGURATION")
         lbl_hw_title.setFont(QFont("Consolas", 9, QFont.Bold))
         lbl_hw_title.setStyleSheet("color: #FF9A00; border: none; background: transparent;")
-        hw_layout.addWidget(lbl_hw_title)
+        hw_outer_layout.addWidget(lbl_hw_title)
+        
+        # Scroll Area for settings items to prevent overflow and look clean
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background-color: #060A10;
+                width: 6px;
+                margin: 0px;
+                border-radius: 3px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #1E2A38;
+                min-height: 20px;
+                border-radius: 3px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #00FFA2;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
+        """)
+        
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background-color: transparent; border: none;")
+        hw_layout = QVBoxLayout(scroll_content)
+        hw_layout.setContentsMargins(0, 0, 6, 0)
+        hw_layout.setSpacing(8)
         
         # Display resolution selectors (Toggles physical/simulator configurations!)
         lbl_res = QLabel("LCD Panel Type:")
@@ -287,7 +339,16 @@ class MainWindow(QMainWindow):
         self.chk_disk_free.setChecked(True)
         self.chk_disk_free.stateChanged.connect(self.sync_active_cards)
         hw_layout.addWidget(self.chk_disk_free)
-
+        
+        # Windows Startup checkbox
+        lbl_startup = QLabel("System Startup Config:")
+        lbl_startup.setStyleSheet("border: none; background: transparent; color: #7F8C8D; font-size: 10px; margin-top: 8px;")
+        hw_layout.addWidget(lbl_startup)
+        
+        self.chk_startup = NeonCheckBox("Launch on Windows Startup", self, "#00FFA2")
+        self.chk_startup.setChecked(False)
+        self.chk_startup.stateChanged.connect(self.toggle_startup)
+        hw_layout.addWidget(self.chk_startup)
         
         # Cycle rotation duration slider
         lbl_cycle = QLabel("Dashboard Rotation Loop (sec):")
@@ -306,7 +367,11 @@ class MainWindow(QMainWindow):
         self.lbl_cycle_val.setAlignment(Qt.AlignRight)
         hw_layout.addWidget(self.lbl_cycle_val)
         
+        scroll.setWidget(scroll_content)
+        hw_outer_layout.addWidget(scroll)
+        
         sidebar.addWidget(hw_panel)
+
         sidebar.addStretch()
         panels_layout.addLayout(sidebar, 1)
 
@@ -572,11 +637,107 @@ class MainWindow(QMainWindow):
             self.serial_manager.send_packet(packet)
 
     def closeEvent(self, event):
-        """Safely stops threads and disconnects lines when closing app."""
+        """Intercepts close and minimizes to tray if tray is active."""
+        if hasattr(self, 'tray_icon') and self.tray_icon.isVisible():
+            self.hide()
+            self.tray_icon.showMessage(
+                "Roufesweb Cyber Stat Screen",
+                "Minimized to system tray. Still streaming telemetry!",
+                QSystemTrayIcon.Information,
+                2000
+            )
+            event.ignore()
+        else:
+            if self.diagnostics_thread:
+                self.diagnostics_thread.stop()
+            self.serial_manager.disconnect()
+            super().closeEvent(event)
+
+    def init_tray(self):
+        """Initializes the Windows system tray icon and background running menu."""
+        self.tray_icon = QSystemTrayIcon(self)
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.png")
+        if os.path.exists(icon_path):
+            self.tray_icon.setIcon(QIcon(icon_path))
+        else:
+            self.tray_icon.setIcon(self.windowIcon())
+            
+        tray_menu = QMenu()
+        
+        show_action = tray_menu.addAction("🔒 Open Dashboard")
+        show_action.triggered.connect(self.showNormal)
+        
+        hide_action = tray_menu.addAction("🙈 Minimize to Tray")
+        hide_action.triggered.connect(self.hide)
+        
+        tray_menu.addSeparator()
+        
+        exit_action = tray_menu.addAction("🛑 Complete Exit")
+        exit_action.triggered.connect(self.complete_exit)
+        
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.setVisible(True)
+        
+        # Double clicking the tray icon restores window
+        self.tray_icon.activated.connect(self.tray_activated)
+
+    def tray_activated(self, reason):
+        if reason == QSystemTrayIcon.DoubleClick:
+            self.showNormal()
+
+    def complete_exit(self):
+        """Triggers a clean termination bypassing closeEvent tray minimization."""
+        self.tray_icon.setVisible(False)
         if self.diagnostics_thread:
             self.diagnostics_thread.stop()
         self.serial_manager.disconnect()
-        super().closeEvent(event)
+        QApplication.quit()
+
+    def check_startup_status(self):
+        """Checks Windows Registry to see if startup shortcut is enabled."""
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        app_name = "RoufeswebCyberStatScreen"
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+            try:
+                winreg.QueryValueEx(key, app_name)
+                self.chk_startup.setChecked(True)
+            except FileNotFoundError:
+                self.chk_startup.setChecked(False)
+            winreg.CloseKey(key)
+        except Exception as e:
+            logging.error(f"Error checking startup key: {e}")
+            self.chk_startup.setChecked(False)
+
+    def toggle_startup(self, state):
+        """Creates/removes Windows registry startup entry dynamically."""
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        app_name = "RoufeswebCyberStatScreen"
+        
+        # Get absolute path of running exe or script
+        if getattr(sys, 'frozen', False):
+            # Compiled pyinstaller exe
+            exe_path = f'"{sys.executable}"'
+        else:
+            # Script run
+            script_path = os.path.abspath(sys.argv[0])
+            exe_path = f'"{sys.executable}" "{script_path}"'
+            
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
+            if state == Qt.Checked or state == 2:
+                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
+                logging.info(f"Created Windows startup registry: {exe_path}")
+            else:
+                try:
+                    winreg.DeleteValue(key, app_name)
+                    logging.info("Deleted Windows startup registry key")
+                except FileNotFoundError:
+                    pass
+            winreg.CloseKey(key)
+        except Exception as e:
+            logging.error(f"Failed to edit Windows startup registry: {e}")
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
