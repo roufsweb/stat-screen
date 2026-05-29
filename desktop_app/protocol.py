@@ -39,7 +39,7 @@ class MicroTelemetryProtocol:
         """
         # Pack 31 bytes first
         data_31 = struct.pack(
-            "<BBBBHBBBBHHBffBBIB",
+            "<BBBBBHBBBBHHBffBBIB",
             0xAA, 0x55, 0x01,
             int(max(0, min(100, cpu_load))),
             int(max(0, min(120, cpu_temp))),
