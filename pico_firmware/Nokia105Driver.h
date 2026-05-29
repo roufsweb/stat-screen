@@ -347,7 +347,6 @@ public:
 
     void pushFrame(const uint16_t* frameBuffer) override {
         set_window(0, 0, 127, 127);
-        noInterrupts();
         set_cs(0);
         NOKIA_CLOCK_DELAY();
 
@@ -395,7 +394,6 @@ public:
 
         set_cs(1);
         NOKIA_CLOCK_DELAY();
-        interrupts();
     }
 };
 
