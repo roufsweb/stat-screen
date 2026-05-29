@@ -69,10 +69,10 @@ The communication protocol transfers real-time telemetry packets from the PC to 
 | **15** | `uint8_t` | `disk_percent`| C: Drive disk utilization percentage | `0 - 100` |
 | **16-19**| `float` | `net_dl_rate` | Network Download Rate in MB/s (32-bit Float) | Any |
 | **20-23**| `float` | `net_ul_rate` | Network Upload Rate in MB/s (32-bit Float) | Any |
-| **24** | `uint8_t` | `active_cards`| Toggled screens mask: Bit0 (CPU), Bit1 (GPU), Bit2 (SYSTEM) | `0x00 - 0x07` |
+| **24** | `uint8_t` | `active_cards`| Toggled screens mask: Bit0 (CPU), Bit1 (GPU), Bit2 (RAM), Bit3 (DISK) | `0x00 - 0x0F` |
 | **25** | `uint8_t` | `cycle_sec` | Screen loop cycle interval in seconds | `1 - 10` |
-| **26-29**| `uint32_t`| `uptime_sec` | Host PC uptime or system epoch in seconds (Little-Endian)| `0 - 4.29B` |
-| **30** | `uint8_t` | `reserved` | Alignment padding (constant `0x00`) | `0x00` |
+| **26-29**| `uint32_t`| `uptime_sec` | Host PC uptime in seconds (Little-Endian)| `0 - 4.29B` |
+| **30** | `uint8_t` | `active_options` | Bitmask of enabled telemetry fields (OPT_SHOW_*) | `0x00 - 0xFF` |
 | **31** | `uint8_t` | `checksum` | XOR checksum of bytes 0 to 30 | `0x00 - 0xFF` |
 
 ### CRC Integrity & Synchronization

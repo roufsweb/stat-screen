@@ -6,11 +6,22 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+class TelemetryOptions:
+    OPT_CPU_LOAD   = 0x01
+    OPT_CPU_TEMP   = 0x02
+    OPT_CPU_CLOCK  = 0x04
+    OPT_GPU_LOAD   = 0x08
+    OPT_GPU_TEMP   = 0x10
+    OPT_GPU_VRAM   = 0x20
+    OPT_RAM_LOAD   = 0x40
+    OPT_RAM_SIZE   = 0x80
+
+
 class MicroTelemetryProtocol:
     @staticmethod
     def pack_telemetry(cpu_load, cpu_temp, cpu_freq, gpu_load, gpu_temp, gpu_vram, 
                         ram_percent, ram_used_mb, ram_total_mb, disk_percent, 
-                        net_dl, net_ul, active_cards, cycle_sec, uptime_sec):
+                        net_dl, net_ul, active_cards, cycle_sec, uptime_sec, active_options=0x7F):
         """
         Packs host telemetry data into a 32-byte MTP binary structure.
         Format matching C++:
@@ -34,7 +45,7 @@ class MicroTelemetryProtocol:
         24      uint8_t  active_cards
         25      uint8_t  cycle_sec
         26-29   uint32_t uptime_sec
-        30      uint8_t  reserved (0x00)
+        30      uint8_t  active_options
         31      uint8_t  checksum
         """
         # Pack 31 bytes first
@@ -56,7 +67,7 @@ class MicroTelemetryProtocol:
             int(active_cards),
             int(max(1, min(10, cycle_sec))),
             int(uptime_sec),
-            0x00  # Reserved
+            int(active_options)
         )
         
         # Calculate XOR checksum of first 31 bytes

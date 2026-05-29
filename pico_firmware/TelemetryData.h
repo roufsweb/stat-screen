@@ -23,10 +23,23 @@ struct TelemetryPacket {
     uint8_t active_cards;   // Bit 0: CPU, Bit 1: GPU, Bit 2: SYSTEM
     uint8_t cycle_sec;      // Screen auto-rotation interval in seconds
     uint32_t uptime_sec;    // Host PC uptime in seconds
-    uint8_t reserved;       // For alignment / future expansion
+    uint8_t active_options; // Bitmask of enabled telemetry fields
     uint8_t checksum;       // XOR checksum of bytes 0 to 30
 };
 #pragma pack(pop)
+
+enum TelemetryOptions {
+    OPT_CPU_LOAD   = 0x01,
+    OPT_CPU_TEMP   = 0x02,
+    OPT_CPU_CLOCK  = 0x04,
+    OPT_GPU_LOAD   = 0x08,
+    OPT_GPU_TEMP   = 0x10,
+    OPT_GPU_VRAM   = 0x20,
+    OPT_RAM_LOAD   = 0x40,
+    OPT_RAM_SIZE   = 0x80
+};
+
+
 
 struct TelemetryState {
     uint8_t cpu_load = 0;
@@ -44,6 +57,7 @@ struct TelemetryState {
     uint8_t active_cards = 0x07; // Default show all: CPU (bit0), GPU (bit1), SYSTEM (bit2)
     uint8_t cycle_sec = 3;       // Default 3 seconds rotation duration
     uint32_t uptime_sec = 0;
+    uint8_t active_options = 0x7F; // Default show all options
     bool online = false;
     uint32_t last_update = 0;
 };
@@ -78,6 +92,7 @@ inline bool parse_telemetry_packet(const uint8_t* buffer, size_t len, TelemetryS
     state.active_cards = packet->active_cards;
     state.cycle_sec = packet->cycle_sec;
     state.uptime_sec = packet->uptime_sec;
+    state.active_options = packet->active_options;
     state.online = true;
     state.last_update = millis();
     

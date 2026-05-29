@@ -80,20 +80,19 @@ class VirtualLCDSimulator(QWidget):
         self.slide_offset = 0.0
         self.slide_target = 0.0
         self.is_sliding = False
-        
-        self.active_cards_mask = 0x07  # Default CPU, GPU, SYSTEM active
-        self.cycle_sec = 3
-        self.online = False
-        
-        # Standby wiggles
-        self.standby_angle = 0.0
         self.wave_phase = 0.0
-        
-        # Instantiate wiggling bubbles lists matching Pico C++
-        self.cpu_bubbles = [BubbleSim(34, 94, 100) for _ in range(3)]
-        self.gpu_bubbles = [BubbleSim(34, 94, 100) for _ in range(3)]
-        self.ram_bubbles = [BubbleSim(12, 56, 86) for _ in range(2)]
-        self.disk_bubbles = [BubbleSim(72, 116, 86) for _ in range(2)]
+        self.active_cards_mask = 0x0F
+        self.cycle_sec = 3
+        self.active_options_mask = 0x7F
+        self.online = False
+        self.standby_angle = 0.0
+
+
+        # Instantiate wiggling bubbles lists matching Pico C++ (full screen)
+        self.cpu_bubbles = [BubbleSim(4, 124, 124) for _ in range(3)]
+        self.gpu_bubbles = [BubbleSim(4, 124, 124) for _ in range(3)]
+        self.ram_bubbles = [BubbleSim(4, 124, 124) for _ in range(3)]
+        self.disk_bubbles = [BubbleSim(4, 124, 124) for _ in range(3)]
         
         # High-speed render loop (40 FPS)
         self.timer = QTimer(self)
@@ -114,9 +113,10 @@ class VirtualLCDSimulator(QWidget):
     def set_online(self, online):
         self.online = online
 
-    def set_config(self, mask, cycle_sec):
+    def set_config(self, mask, cycle_sec, options=0x7F):
         self.active_cards_mask = mask
         self.cycle_sec = cycle_sec
+        self.active_options_mask = options
 
     def update_simulation(self):
         # 1. Easing value interpolation (Lerp dampening)
@@ -172,22 +172,25 @@ class VirtualLCDSimulator(QWidget):
 
         cpu_active = bool(self.active_cards_mask & 0x01)
         gpu_active = bool(self.active_cards_mask & 0x02)
-        sys_active = bool(self.active_cards_mask & 0x04)
+        ram_active = bool(self.active_cards_mask & 0x04)
+        disk_active = bool(self.active_cards_mask & 0x08)
 
-        if cpu_active or gpu_active or sys_active:
+        if cpu_active or gpu_active or ram_active or disk_active:
             self.prev_card = self.active_card
-            next_card = (self.active_card + 1) % 3
+            next_card = (self.active_card + 1) % 4
             
-            for _ in range(3):
+            for _ in range(4):
                 if next_card == 0 and cpu_active: self.active_card = 0; break
                 if next_card == 1 and gpu_active: self.active_card = 1; break
-                if next_card == 2 and sys_active: self.active_card = 2; break
-                next_card = (next_card + 1) % 3
+                if next_card == 2 and ram_active: self.active_card = 2; break
+                if next_card == 3 and disk_active: self.active_card = 3; break
+                next_card = (next_card + 1) % 4
 
             if self.active_card != self.prev_card:
                 dir_val = 1 if self.active_card > self.prev_card else -1
                 if abs(self.active_card - self.prev_card) > 1:
-                    dir_val = -dir_val
+                    if (self.prev_card == 0 and self.active_card == 3) or (self.prev_card == 3 and self.active_card == 0):
+                        dir_val = -dir_val
 
                 self.slide_offset = 0.0
                 self.slide_target = -dir_val * self.width_px
@@ -238,29 +241,52 @@ class VirtualLCDSimulator(QWidget):
             painter.restore()
 
     def draw_single_card(self, painter, card_idx, offset_x):
+        self.draw_top_status_bar(painter, offset_x)
         if card_idx == 0:
             self.draw_cpu_card(painter, offset_x)
         elif card_idx == 1:
             self.draw_gpu_card(painter, offset_x)
         elif card_idx == 2:
-            self.draw_system_card(painter, offset_x)
+            self.draw_ram_card(painter, offset_x)
+        elif card_idx == 3:
+            self.draw_disk_card(painter, offset_x)
 
-    def draw_header(self, painter, offset_x, title):
-        line_y = 30 if self.width_px == 240 else 16
-        spacing = 6 if self.width_px == 240 else 8
+    def draw_top_status_bar(self, painter, offset_x):
+        # Subtle status bar overlay at y = 4 to 15
+        painter.setFont(QFont("Consolas", 6, QFont.Bold))
+        painter.setPen(QColor("#00FFA2"))
         
-        painter.setFont(QFont("Consolas", 7, QFont.Bold))
+        card_name = "CPU CARD"
+        if self.online:
+            if self.active_card == 0: card_name = "CPU CARD"
+            elif self.active_card == 1: card_name = "GPU CARD"
+            elif self.active_card == 2: card_name = "RAM CARD"
+            elif self.active_card == 3: card_name = "DISK CARD"
+        else:
+            card_name = "STANDBY"
+            
+        painter.drawText(offset_x + 8, 12, card_name)
+        
         painter.setPen(QColor("#7F8C8D"))
-        painter.drawText(offset_x + spacing, 11, title)
-
+        if self.online:
+            up = self.data.get("uptime", 0)
+            hh = up // 3600
+            mm = (up % 3600) // 60
+            ss = up % 60
+            status_txt = f"{hh:02d}:{mm:02d}:{ss:02d}"
+        else:
+            status_txt = "OFFLINE"
+        painter.drawText(offset_x + self.width_px - 8 - len(status_txt)*4, 12, status_txt)
+        
         painter.setPen(QPen(QColor("#1E2A38"), 1))
-        painter.drawLine(offset_x + spacing, line_y - 2, offset_x + self.width_px - spacing, line_y - 2)
+        painter.drawLine(offset_x + 4, 15, offset_x + self.width_px - 4, 15)
+
 
     # ========================================================
     # 🫧 HIGH-PERFORMANCE SLOSHING WATER TANK DRAW WIDGET
     # ========================================================
     def draw_water_tank(self, painter, offset_x, tx_left, tx_right, ty_top, ty_bottom, 
-                        val, color, label, bubbles_list):
+                        val, color, title, details_lines, bubbles_list):
         w = tx_right - tx_left
         h = ty_bottom - ty_top
 
@@ -268,12 +294,12 @@ class VirtualLCDSimulator(QWidget):
         h_fluid = h * (val / 100.0)
         y_level = ty_bottom - h_fluid
 
-        # 2. Draw outer tech frames
-        painter.setPen(QPen(QColor("#3C5064"), 1))
+        # 2. Draw outer tech frames (glass cylinder)
+        painter.setPen(QPen(QColor("#1E2A38"), 1))
         painter.setBrush(Qt.NoBrush)
         painter.drawRect(offset_x + tx_left, ty_top, w, h)
         
-        painter.setPen(QPen(QColor("#64788C"), 1))
+        painter.setPen(QPen(QColor("#0D1520"), 1))
         painter.drawRect(offset_x + tx_left - 2, ty_top - 2, w + 4, h + 4)
 
         # 3. Rasterize wave columns matching Pico C++
@@ -316,28 +342,46 @@ class VirtualLCDSimulator(QWidget):
                 else:
                     painter.drawPoint(offset_x + bx, by)
 
-        # 5. High-contrast numeric label dropshadow overlays
-        painter.setFont(QFont("Consolas", 8, QFont.Bold))
-        val_txt = f"{int(val)}%"
-        text_x = offset_x + tx_left + w / 2 - len(val_txt) * 3
-        text_y = ty_top + h / 2 - 4
+        # 5. Dynamic text-stacking and centering algorithm
+        title_h = 16
+        detail_h = 10
+        spacing = 4
+        N = len(details_lines)
+        total_text_h = title_h + N * detail_h + (N) * spacing
 
-        # Shadow
+        start_y = ty_top + (h - total_text_h) / 2
+
+        # Draw Title
+        painter.setFont(QFont("Consolas", 11, QFont.Bold))
+        title_w = len(title) * 6
+        title_x = offset_x + tx_left + w / 2 - title_w / 2
+        # Outline
         painter.setPen(QColor("#000000"))
-        painter.drawText(text_x + 1, text_y + 9, val_txt)
+        painter.drawText(title_x - 1, start_y + 10, title)
+        painter.drawText(title_x + 1, start_y + 10, title)
+        painter.drawText(title_x, start_y + 9, title)
+        painter.drawText(title_x, start_y + 11, title)
         # Value
         painter.setPen(QColor("#FFFFFF"))
-        painter.drawText(text_x, text_y + 8, val_txt)
+        painter.drawText(title_x, start_y + 10, title)
 
-        # Sub label text
-        painter.setFont(QFont("Consolas", 6))
-        lbl_x = offset_x + tx_left + w / 2 - len(label) * 2
-        lbl_y = ty_top + h / 2 + 8
-        
-        painter.setPen(QColor("#000000"))
-        painter.drawText(lbl_x + 1, lbl_y + 7, label)
-        painter.setPen(QColor("#C8DCF0"))
-        painter.drawText(lbl_x, lbl_y + 6, label)
+        # Draw details lines
+        painter.setFont(QFont("Consolas", 7, QFont.Bold))
+        curr_y = start_y + title_h + spacing
+        for line in details_lines:
+            line_w = len(line) * 4.5
+            lx = offset_x + tx_left + w / 2 - line_w / 2
+            # Outline
+            painter.setPen(QColor("#000000"))
+            painter.drawText(lx - 1, curr_y + 8, line)
+            painter.drawText(lx + 1, curr_y + 8, line)
+            painter.drawText(lx, curr_y + 7, line)
+            painter.drawText(lx, curr_y + 9, line)
+            # Value
+            painter.setPen(QColor("#C8DCF0"))
+            painter.drawText(lx, curr_y + 8, line)
+            curr_y += detail_h + spacing
+
 
     def draw_cpu_card(self, painter, offset_x):
         accent = QColor("#00FFA2")  # Turquoise
@@ -345,24 +389,15 @@ class VirtualLCDSimulator(QWidget):
         if temp > 75.0: accent = QColor("#FF3344")
         elif temp > 55.0: accent = QColor("#FFAA00")
 
-        self.draw_header(painter, offset_x, "CPU DIAGNOSTICS")
+        details = []
+        if self.active_options_mask & 0x01:
+            details.append(f"USAGE: {int(self.anim_cpu)}%")
+        if self.active_options_mask & 0x02:
+            details.append(f"TEMP: {int(temp)}C")
+        if self.active_options_mask & 0x04:
+            details.append(f"CLOCK: {self.data['cpu_freq']/1000.0:.1f}GHz")
 
-        # Central sloshing water tank (Nokia 128x128 geometry)
-        self.draw_water_tank(painter, offset_x, 34, 94, 28, 100, self.anim_cpu, accent, "LOAD", self.cpu_bubbles)
-
-        # Bottom temperature bar
-        ty = 106
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QBrush(QColor("#121F2D")))
-        painter.drawRoundedRect(offset_x + 8, ty, self.width_px - 16, 16, 3, 3)
-        
-        painter.setBrush(QBrush(accent))
-        fill_w = (self.width_px - 16) * (temp / 100.0)
-        painter.drawRoundedRect(offset_x + 8, ty, max(0.0, min(self.width_px - 16, fill_w)), 16, 3, 3)
-
-        painter.setPen(QColor("#060A10"))
-        painter.setFont(QFont("Consolas", 7, QFont.Bold))
-        painter.drawText(offset_x + 14, ty + 12, f"TEMP: {int(temp)} C")
+        self.draw_water_tank(painter, offset_x, 4, 124, 18, 124, self.anim_cpu, accent, "CPU", details, self.cpu_bubbles)
 
     def draw_gpu_card(self, painter, offset_x):
         accent = QColor("#00DFFF")  # Cyan
@@ -370,67 +405,43 @@ class VirtualLCDSimulator(QWidget):
         if temp > 75.0: accent = QColor("#FF3344")
         elif temp > 55.0: accent = QColor("#FFAA00")
 
-        self.draw_header(painter, offset_x, "GPU DIAGNOSTICS")
+        details = []
+        if self.active_options_mask & 0x08:
+            details.append(f"UTIL: {int(self.anim_gpu)}%")
+        if self.active_options_mask & 0x10:
+            details.append(f"TEMP: {int(temp)}C")
+        if self.active_options_mask & 0x20:
+            details.append(f"VRAM: {self.data['gpu_vram']}%")
 
-        # Central sloshing water tank
-        self.draw_water_tank(painter, offset_x, 34, 94, 28, 100, self.anim_gpu, accent, "UTIL", self.gpu_bubbles)
+        self.draw_water_tank(painter, offset_x, 4, 124, 18, 124, self.anim_gpu, accent, "GPU", details, self.gpu_bubbles)
 
-        # Bottom temperature bar
-        ty = 106
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QBrush(QColor("#121F2D")))
-        painter.drawRoundedRect(offset_x + 8, ty, self.width_px - 16, 16, 3, 3)
+    def draw_ram_card(self, painter, offset_x):
+        accent = QColor("#00FFA2")  # Turquoise
         
-        painter.setBrush(QBrush(accent))
-        fill_w = (self.width_px - 16) * (temp / 100.0)
-        painter.drawRoundedRect(offset_x + 8, ty, max(0.0, min(self.width_px - 16, fill_w)), 16, 3, 3)
+        details = []
+        if self.active_options_mask & 0x40:
+            details.append(f"USED: {int(self.anim_ram)}%")
+        if self.active_options_mask & 0x80:
+            details.append(f"SIZE: {self.data['ram_used_mb']/1024.0:.1f}G/{self.data['ram_total_mb']/1024.0:.1f}G")
+        if hasattr(self, 'active_cards_mask') and (self.active_cards_mask & 0x40):
+            dl_str = f"DL:{self.anim_net_dl:.1f}M" if self.anim_net_dl >= 1.0 else f"DL:{self.anim_net_dl*1024.0:.0f}K"
+            ul_str = f"UL:{self.anim_net_ul:.1f}M" if self.anim_net_ul >= 1.0 else f"UL:{self.anim_net_ul*1024.0:.0f}K"
+            details.append(dl_str)
+            details.append(ul_str)
 
-        painter.setPen(QColor("#060A10"))
-        painter.setFont(QFont("Consolas", 7, QFont.Bold))
-        painter.drawText(offset_x + 14, ty + 12, f"TEMP: {int(temp)} C")
+        self.draw_water_tank(painter, offset_x, 4, 124, 18, 124, self.anim_ram, accent, "RAM", details, self.ram_bubbles)
 
-    def draw_system_card(self, painter, offset_x):
-        gold = QColor("#FF9A00")
-        turquoise = QColor("#00FFA2")
-
-        self.draw_header(painter, offset_x, "SYS DIAGNOSTICS")
-
-        # Double side-by-side water tanks displaying RAM and DISK together!
-        # Left Tank (RAM)
-        self.draw_water_tank(painter, offset_x, 12, 56, 26, 86, self.anim_ram, turquoise, "RAM", self.ram_bubbles)
-
-        # Right Tank (DISK C:)
-        self.draw_water_tank(painter, offset_x, 72, 116, 26, 86, self.anim_disk, gold, "DISK", self.disk_bubbles)
-
-        # Network Speeds
-        painter.setFont(QFont("Consolas", 6, QFont.Bold))
-        painter.setPen(QColor("#00DFFF"))
-        painter.drawText(offset_x + 8, 101, f"D:{self.anim_net_dl:.1f}")
+    def draw_disk_card(self, painter, offset_x):
+        accent = QColor("#FF9A00")  # Gold
         
-        painter.setPen(QColor("#FF3344"))
-        painter.drawText(offset_x + 68, 101, f"U:{self.anim_net_ul:.1f}")
+        details = []
+        if hasattr(self, 'active_cards_mask') and (self.active_cards_mask & 0x10):
+            details.append(f"USED: {int(self.anim_disk)}%")
+        if hasattr(self, 'active_cards_mask') and (self.active_cards_mask & 0x20):
+            details.append(f"FREE: {100 - int(self.anim_disk)}%")
 
-        # Rolling Wave micro history chart at bottom
-        y = 104
-        graph_h = 18
-        graph_w = self.width_px - 16
 
-        # Draw grid line path
-        path = QPainterPath()
-        points = []
-        max_val = max(max(self.net_history), 2.0)
-        for i, val in enumerate(self.net_history):
-            px = offset_x + 8 + (i / (len(self.net_history) - 1)) * graph_w
-            py = y + graph_h - (val / max_val) * graph_h * 0.8
-            points.append(QPointF(px, py))
-            
-        if points:
-            path.moveTo(points[0])
-            for pt in points[1:]:
-                path.lineTo(pt)
-            painter.setPen(QPen(QColor("#00DFFF"), 1))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawPath(path)
+        self.draw_water_tank(painter, offset_x, 4, 124, 18, 124, self.anim_disk, accent, "DISK", details, self.disk_bubbles)
 
     def draw_standby(self, painter):
         cx = self.width() / 2

@@ -67,7 +67,7 @@ AnimatedValue anim_net_ul(0.0f, 0.15f);
 SlideTransition card_slider(0.12f);
 RollingHistory<float, 40> net_history;
 
-enum DashboardCard { CARD_CPU = 0, CARD_GPU = 1, CARD_SYS = 2 };
+enum DashboardCard { CARD_CPU = 0, CARD_GPU = 1, CARD_RAM = 2, CARD_DISK = 3 };
 DashboardCard active_card = CARD_CPU;
 DashboardCard previous_card = CARD_CPU;
 
@@ -122,8 +122,8 @@ struct Bubble {
 
 Bubble cpu_bubbles[3];
 Bubble gpu_bubbles[3];
-Bubble ram_bubbles[2];
-Bubble disk_bubbles[2];
+Bubble ram_bubbles[3];
+Bubble disk_bubbles[3];
 
 // ========================================================
 // 🚀 PROTOCOL & SERIAL LISTENING
@@ -153,20 +153,55 @@ void parse_serial_stream() {
     }
 }
 
+void draw_top_status_bar(int offset_x) {
+    // Subtle status bar overlay at y = 4 to 15
+    const char* card_name = "CPU CARD";
+    if (render_state.online) {
+        switch (active_card) {
+            case CARD_CPU: card_name = "CPU CARD"; break;
+            case CARD_GPU: card_name = "GPU CARD"; break;
+            case CARD_RAM: card_name = "RAM CARD"; break;
+            case CARD_DISK: card_name = "DISK CARD"; break;
+        }
+    } else {
+        card_name = "STANDBY";
+    }
+
+    gfx->drawString(offset_x + 8, 4, card_name, GraphicsEngine::rgb(0, 255, 162), 1);
+    
+    char status_txt[20];
+    if (render_state.online) {
+        uint32_t seconds = render_state.uptime_sec;
+        uint32_t h = seconds / 3600;
+        uint32_t m = (seconds % 3600) / 60;
+        uint32_t s = seconds % 60;
+        sprintf(status_txt, "%02lu:%02lu:%02lu", h, m, s);
+    } else {
+        strcpy(status_txt, "OFFLINE");
+    }
+    int txt_w = strlen(status_txt) * 6;
+    gfx->drawString(offset_x + SCREEN_WIDTH - 8 - txt_w, 4, status_txt, GraphicsEngine::rgb(127, 140, 141), 1);
+    
+    gfx->drawLine(offset_x + 4, 15, offset_x + SCREEN_WIDTH - 4, 15, GraphicsEngine::rgb(30, 42, 56));
+}
+
+
 // ========================================================
 // 🫧 HIGH-PERFORMANCE SLOSHING WATER TANK DRAW UTILITY
 // ========================================================
 void draw_water_tank(int offset_x, int tx_left, int tx_right, int ty_top, int ty_bottom, 
-                     float val, uint16_t accent_color, const char* label, Bubble* bubbles, int num_bubbles) {
+                     float val, uint16_t accent_color, const char* title, const char* details_lines[], int num_lines, Bubble* bubbles, int num_bubbles) {
     int w = tx_right - tx_left;
     int h = ty_bottom - ty_top;
 
     float h_fluid = h * (val / 100.0f);
     int y_level = ty_bottom - (int)h_fluid;
 
-    gfx->drawRect(offset_x + tx_left, ty_top, w, h, GraphicsEngine::rgb(60, 80, 100));
-    gfx->drawRect(offset_x + tx_left - 2, ty_top - 2, w + 4, h + 4, GraphicsEngine::rgb(100, 120, 140));
+    // Outer glass cylinders
+    gfx->drawRect(offset_x + tx_left, ty_top, w, h, GraphicsEngine::rgb(30, 42, 56));
+    gfx->drawRect(offset_x + tx_left - 2, ty_top - 2, w + 4, h + 4, GraphicsEngine::rgb(13, 21, 32));
 
+    // Sloshing wave surface columns
     for (int col = tx_left + 1; col < tx_right; ++col) {
         float theta = ((float)(col - tx_left) / w) * 2.0f * M_PI + wave_phase;
         float dy = 3.0f * sinf(theta);
@@ -178,6 +213,7 @@ void draw_water_tank(int offset_x, int tx_left, int tx_right, int ty_top, int ty
         gfx->drawPixel(offset_x + col, y_surf, 0xFFFF);
     }
 
+    // Drifting wiggling bubble particles
     for (int i = 0; i < num_bubbles; ++i) {
         int col_idx = (int)bubbles[i].x - tx_left;
         float theta = ((float)col_idx / w) * 2.0f * M_PI + wave_phase;
@@ -199,25 +235,40 @@ void draw_water_tank(int offset_x, int tx_left, int tx_right, int ty_top, int ty
         }
     }
 
-    char buf[16];
-    sprintf(buf, "%d%%", (int)val);
-    int text_x = offset_x + tx_left + w / 2 - strlen(buf) * 3;
-    int text_y = ty_top + h / 2 - 4;
+    // Dynamic text-stacking and centering algorithm
+    int title_h = 16;
+    int detail_h = 10;
+    int spacing = 4;
+    int total_text_h = title_h + num_lines * detail_h + num_lines * spacing;
 
-    gfx->drawString(text_x + 1, text_y + 1, buf, 0x0000);
-    gfx->drawString(text_x, text_y, buf, 0xFFFF);
+    int start_y = ty_top + (h - total_text_h) / 2;
 
-    int lbl_x = offset_x + tx_left + w / 2 - strlen(label) * 3;
-    int lbl_y = ty_top + h / 2 + 6;
-    gfx->drawString(lbl_x + 1, lbl_y + 1, label, 0x0000);
-    gfx->drawString(lbl_x, lbl_y, label, GraphicsEngine::rgb(200, 220, 240));
-}
+    // Draw Title (double size = 2)
+    int title_w = strlen(title) * 12; // 6 pixels per char. Double size = 12.
+    int title_x = offset_x + tx_left + w / 2 - title_w / 2;
+    // Outline
+    gfx->drawString(title_x - 1, start_y, title, 0x0000, 2);
+    gfx->drawString(title_x + 1, start_y, title, 0x0000, 2);
+    gfx->drawString(title_x, start_y - 1, title, 0x0000, 2);
+    gfx->drawString(title_x, start_y + 1, title, 0x0000, 2);
+    // Title
+    gfx->drawString(title_x, start_y, title, 0xFFFF, 2);
 
-void draw_header(int offset_x, const char* title, uint16_t accent_color) {
-    int line_y = (SCREEN_WIDTH == 240) ? 30 : 16;
-    int spacing = (SCREEN_WIDTH == 240) ? 6 : 8;
-    gfx->drawString(offset_x + spacing, 4, title, GraphicsEngine::rgb(127, 140, 141), 1);
-    gfx->drawLine(offset_x + spacing, line_y - 2, offset_x + SCREEN_WIDTH - spacing, line_y - 2, GraphicsEngine::rgb(30, 42, 56));
+    // Draw detail lines
+    int curr_y = start_y + title_h + spacing;
+    for (int i = 0; i < num_lines; ++i) {
+        int line_w = strlen(details_lines[i]) * 6; // 6 pixels per character at size 1
+        int lx = offset_x + tx_left + w / 2 - line_w / 2;
+        // Outline
+        gfx->drawString(lx - 1, curr_y, details_lines[i], 0x0000, 1);
+        gfx->drawString(lx + 1, curr_y, details_lines[i], 0x0000, 1);
+        gfx->drawString(lx, curr_y - 1, details_lines[i], 0x0000, 1);
+        gfx->drawString(lx, curr_y + 1, details_lines[i], 0x0000, 1);
+        // Value
+        gfx->drawString(lx, curr_y, details_lines[i], GraphicsEngine::rgb(200, 220, 240), 1);
+        curr_y += detail_h + spacing;
+    }
+
 }
 
 void draw_cpu_card(int offset_x) {
@@ -228,16 +279,27 @@ void draw_cpu_card(int offset_x) {
     if (temp > 75.0f) accent = GraphicsEngine::rgb(255, 51, 68);
     else if (temp > 55.0f) accent = GraphicsEngine::rgb(255, 170, 0);
 
-    draw_header(offset_x, "CPU DIAGNOSTICS", accent);
-    draw_water_tank(offset_x, 34, 94, 28, 100, load, accent, "LOAD", cpu_bubbles, 3);
+    const char* details[3];
+    int num_lines = 0;
 
-    char buf[16];
-    gfx->fillRoundRect(offset_x + 8, 106, SCREEN_WIDTH - 16, 16, 3, GraphicsEngine::rgb(18, 31, 45));
-    int fill_w = (int)((SCREEN_WIDTH - 16) * (temp / 100.0f));
-    gfx->fillRoundRect(offset_x + 8, 106, min(SCREEN_WIDTH - 16, fill_w), 16, 3, accent);
-    
-    sprintf(buf, "TEMP: %d C", (int)temp);
-    gfx->drawString(offset_x + 14, 110, buf, GraphicsEngine::rgb(6, 10, 16), 1);
+    char load_str[16];
+    char temp_str[16];
+    char clock_str[16];
+
+    if (render_state.active_options & OPT_CPU_LOAD) {
+        sprintf(load_str, "USAGE: %d%%", (int)load);
+        details[num_lines++] = load_str;
+    }
+    if (render_state.active_options & OPT_CPU_TEMP) {
+        sprintf(temp_str, "TEMP: %dC", (int)temp);
+        details[num_lines++] = temp_str;
+    }
+    if (render_state.active_options & OPT_CPU_CLOCK) {
+        sprintf(clock_str, "CLOCK: %.1fG", (float)render_state.cpu_freq / 1000.0f);
+        details[num_lines++] = clock_str;
+    }
+
+    draw_water_tank(offset_x, 4, 124, 18, 124, load, accent, "CPU", details, num_lines, cpu_bubbles, 3);
 }
 
 void draw_gpu_card(int offset_x) {
@@ -248,57 +310,87 @@ void draw_gpu_card(int offset_x) {
     if (temp > 75.0f) accent = GraphicsEngine::rgb(255, 51, 68);
     else if (temp > 55.0f) accent = GraphicsEngine::rgb(255, 170, 0);
 
-    draw_header(offset_x, "GPU DIAGNOSTICS", accent);
-    draw_water_tank(offset_x, 34, 94, 28, 100, load, accent, "UTIL", gpu_bubbles, 3);
+    const char* details[3];
+    int num_lines = 0;
 
-    char buf[16];
-    gfx->fillRoundRect(offset_x + 8, 106, SCREEN_WIDTH - 16, 16, 3, GraphicsEngine::rgb(18, 31, 45));
-    int fill_w = (int)((SCREEN_WIDTH - 16) * (temp / 100.0f));
-    gfx->fillRoundRect(offset_x + 8, 106, min(SCREEN_WIDTH - 16, fill_w), 16, 3, accent);
-    
-    sprintf(buf, "TEMP: %d C", (int)temp);
-    gfx->drawString(offset_x + 14, 110, buf, GraphicsEngine::rgb(6, 10, 16), 1);
-}
+    char load_str[16];
+    char temp_str[16];
+    char vram_str[16];
 
-void draw_system_card(int offset_x) {
-    float ram = anim_ram.update();
-    float disk = anim_disk.update();
-    float dl = anim_net_dl.update();
-    float ul = anim_net_ul.update();
-    
-    uint16_t gold = GraphicsEngine::rgb(255, 170, 0);
-    uint16_t turquoise = GraphicsEngine::rgb(0, 255, 162);
-    
-    draw_header(offset_x, "SYS DIAGNOSTICS", gold);
-    draw_water_tank(offset_x, 12, 56, 26, 86, ram, turquoise, "RAM", ram_bubbles, 2);
-    draw_water_tank(offset_x, 72, 116, 26, 86, disk, gold, "DISK", disk_bubbles, 2);
-
-    char buf[32];
-    sprintf(buf, "D:%.1f", dl);
-    gfx->drawString(offset_x + 8, 93, buf, GraphicsEngine::rgb(0, 223, 255), 1);
-    
-    sprintf(buf, "U:%.1f", ul);
-    gfx->drawString(offset_x + 68, 93, buf, GraphicsEngine::rgb(255, 51, 68), 1);
-
-    int y = 104;
-    int graph_h = 18;
-    int graph_w = SCREEN_WIDTH - 16;
-    float max_dl = net_history.getMaxValue(2.0f);
-    int prev_px = 0, prev_py = 0;
-    
-    for (int i = 0; i < net_history.size(); ++i) {
-        int px = offset_x + 8 + (int)((float)i / (net_history.size() - 1) * graph_w);
-        float val = net_history.get(i);
-        int py = y + graph_h - (int)(graph_h * (val / max_dl) * 0.8f);
-        py = max(y, min(y + graph_h - 1, py));
-
-        if (i > 0) {
-            gfx->drawLine(prev_px, prev_py, px, py, GraphicsEngine::rgb(0, 223, 255));
-        }
-        prev_px = px;
-        prev_py = py;
+    if (render_state.active_options & OPT_GPU_LOAD) {
+        sprintf(load_str, "UTIL: %d%%", (int)load);
+        details[num_lines++] = load_str;
     }
+    if (render_state.active_options & OPT_GPU_TEMP) {
+        sprintf(temp_str, "TEMP: %dC", (int)temp);
+        details[num_lines++] = temp_str;
+    }
+    if (render_state.active_options & OPT_GPU_VRAM) {
+        sprintf(vram_str, "VRAM: %d%%", render_state.gpu_vram);
+        details[num_lines++] = vram_str;
+    }
+
+    draw_water_tank(offset_x, 4, 124, 18, 124, load, accent, "GPU", details, num_lines, gpu_bubbles, 3);
 }
+
+void draw_ram_card(int offset_x) {
+    float ram = anim_ram.update();
+    uint16_t accent = GraphicsEngine::rgb(0, 255, 162);
+
+    const char* details[4];
+    int num_lines = 0;
+
+    char load_str[16];
+    char size_str[24];
+    char dl_str[16];
+    char ul_str[16];
+
+    if (render_state.active_options & OPT_RAM_LOAD) {
+        sprintf(load_str, "USED: %d%%", (int)ram);
+        details[num_lines++] = load_str;
+    }
+    if (render_state.active_options & OPT_RAM_SIZE) {
+        sprintf(size_str, "SIZE: %.1fG/%.1fG", (float)render_state.ram_used_mb / 1024.0f, (float)render_state.ram_total_mb / 1024.0f);
+        details[num_lines++] = size_str;
+    }
+    if (render_state.active_cards & 0x40) {
+        float dl = anim_net_dl.update();
+        float ul = anim_net_ul.update();
+        if (dl >= 1.0f) sprintf(dl_str, "DL: %.1fM", dl);
+        else sprintf(dl_str, "DL: %.0fK", dl * 1024.0f);
+        
+        if (ul >= 1.0f) sprintf(ul_str, "UL: %.1fM", ul);
+        else sprintf(ul_str, "UL: %.0fK", ul * 1024.0f);
+
+        details[num_lines++] = dl_str;
+        details[num_lines++] = ul_str;
+    }
+
+    draw_water_tank(offset_x, 4, 124, 18, 124, ram, accent, "RAM", details, num_lines, ram_bubbles, 3);
+}
+
+void draw_disk_card(int offset_x) {
+    float disk = anim_disk.update();
+    uint16_t accent = GraphicsEngine::rgb(255, 170, 0);
+
+    const char* details[2];
+    int num_lines = 0;
+
+    char load_str[16];
+    char free_str[16];
+
+    if (render_state.active_cards & 0x10) {
+        sprintf(load_str, "USED: %d%%", (int)disk);
+        details[num_lines++] = load_str;
+    }
+    if (render_state.active_cards & 0x20) {
+        sprintf(free_str, "FREE: %d%%", 100 - (int)disk);
+        details[num_lines++] = free_str;
+    }
+
+    draw_water_tank(offset_x, 4, 124, 18, 124, disk, accent, "DISK", details, num_lines, disk_bubbles, 3);
+}
+
 
 void draw_standby_screen() {
     gfx->fillScreen(GraphicsEngine::rgb(3, 7, 12));
@@ -349,13 +441,19 @@ void draw_live_dashboard() {
         gfx->fillRect(cx, 0, 1, SCREEN_HEIGHT, GraphicsEngine::rgb(8, 16, 28));
     }
 
+    draw_top_status_bar(0);
+
     if (card_sliding) {
         float offset = card_slider.getOffset();
         card_sliding = card_slider.update();
 
         int dir = (active_card > previous_card) ? 1 : -1;
         if (abs(active_card - previous_card) > 1) {
-            dir = -dir;
+            if ((previous_card == CARD_CPU && active_card == CARD_DISK) || (previous_card == CARD_DISK && active_card == CARD_CPU)) {
+                dir = -dir;
+            } else {
+                dir = -dir;
+            }
         }
 
         int prev_x = (int)offset;
@@ -364,19 +462,22 @@ void draw_live_dashboard() {
         switch (previous_card) {
             case CARD_CPU: draw_cpu_card(prev_x); break;
             case CARD_GPU: draw_gpu_card(prev_x); break;
-            case CARD_SYS: draw_system_card(prev_x); break;
+            case CARD_RAM: draw_ram_card(prev_x); break;
+            case CARD_DISK: draw_disk_card(prev_x); break;
         }
 
         switch (active_card) {
             case CARD_CPU: draw_cpu_card(active_x); break;
             case CARD_GPU: draw_gpu_card(active_x); break;
-            case CARD_SYS: draw_system_card(active_x); break;
+            case CARD_RAM: draw_ram_card(active_x); break;
+            case CARD_DISK: draw_disk_card(active_x); break;
         }
     } else {
         switch (active_card) {
             case CARD_CPU: draw_cpu_card(0); break;
             case CARD_GPU: draw_gpu_card(0); break;
-            case CARD_SYS: draw_system_card(0); break;
+            case CARD_RAM: draw_ram_card(0); break;
+            case CARD_DISK: draw_disk_card(0); break;
         }
     }
 }
@@ -415,22 +516,28 @@ void update_animations() {
     if (now - last_card_swap > cycle_ms) {
         bool cpu_active = (render_state.active_cards & 0x01);
         bool gpu_active = (render_state.active_cards & 0x02);
-        bool sys_active = (render_state.active_cards & 0x04);
+        bool ram_active = (render_state.active_cards & 0x04);
+        bool disk_active = (render_state.active_cards & 0x08);
 
-        if (cpu_active || gpu_active || sys_active) {
+        if (cpu_active || gpu_active || ram_active || disk_active) {
             previous_card = active_card;
             
-            int next = (active_card + 1) % 3;
-            for (int i = 0; i < 3; ++i) {
+            int next = (active_card + 1) % 4;
+            for (int i = 0; i < 4; ++i) {
                 if (next == CARD_CPU && cpu_active) { active_card = CARD_CPU; break; }
                 if (next == CARD_GPU && gpu_active) { active_card = CARD_GPU; break; }
-                if (next == CARD_SYS && sys_active) { active_card = CARD_SYS; break; }
-                next = (next + 1) % 3;
+                if (next == CARD_RAM && ram_active) { active_card = CARD_RAM; break; }
+                if (next == CARD_DISK && disk_active) { active_card = CARD_DISK; break; }
+                next = (next + 1) % 4;
             }
 
             if (active_card != previous_card) {
                 int dir = (active_card > previous_card) ? 1 : -1;
-                if (abs(active_card - previous_card) > 1) dir = -dir;
+                if (abs(active_card - previous_card) > 1) {
+                    if ((previous_card == CARD_CPU && active_card == CARD_DISK) || (previous_card == CARD_DISK && active_card == CARD_CPU)) {
+                        dir = -dir;
+                    }
+                }
 
                 card_slider.force(0.0f);
                 card_slider.slideTo(-dir * SCREEN_WIDTH);
@@ -454,12 +561,10 @@ void setup() {
     gfx = new GraphicsEngine(SCREEN_WIDTH, SCREEN_HEIGHT);
 
     for (int i = 0; i < 3; ++i) {
-        cpu_bubbles[i].reset(34, 94, 100);
-        gpu_bubbles[i].reset(34, 94, 100);
-    }
-    for (int i = 0; i < 2; ++i) {
-        ram_bubbles[i].reset(12, 56, 86);
-        disk_bubbles[i].reset(72, 116, 86);
+        cpu_bubbles[i].reset(4, 124, 124);
+        gpu_bubbles[i].reset(4, 124, 124);
+        ram_bubbles[i].reset(4, 124, 124);
+        disk_bubbles[i].reset(4, 124, 124);
     }
 }
 

@@ -67,7 +67,8 @@ class MainWindow(QMainWindow):
         # Core logic initializations
         self.serial_manager = SerialStreamManager()
         self.diagnostics_thread = None
-        self.active_cards_mask = 0x07  # Bit0: CPU, Bit1: GPU, Bit2: SYSTEM (Default all ON)
+        self.active_cards_mask = 0x0F  # Bit0: CPU, Bit1: GPU, Bit2: RAM, Bit3: DISK
+        self.active_options_mask = 0x7F  # All options ON by default
         
         # Main Layout Setup
         self.init_ui()
@@ -217,10 +218,76 @@ class MainWindow(QMainWindow):
         self.chk_gpu.stateChanged.connect(self.sync_active_cards)
         hw_layout.addWidget(self.chk_gpu)
         
-        self.chk_sys = NeonCheckBox("RAM & Network stats", self, "#FF9A00")
-        self.chk_sys.setChecked(True)
-        self.chk_sys.stateChanged.connect(self.sync_active_cards)
-        hw_layout.addWidget(self.chk_sys)
+        self.chk_ram = NeonCheckBox("RAM Allocation", self, "#FF9A00")
+        self.chk_ram.setChecked(True)
+        self.chk_ram.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_ram)
+
+        self.chk_disk = NeonCheckBox("DISK Occupancy", self, "#FFAA00")
+        self.chk_disk.setChecked(True)
+        self.chk_disk.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_disk)
+
+        # Granular Option Toggles
+        lbl_options = QLabel("Display Data Items:")
+        lbl_options.setStyleSheet("border: none; background: transparent; color: #7F8C8D; font-size: 10px; margin-top: 8px;")
+        hw_layout.addWidget(lbl_options)
+
+        self.chk_cpu_load = NeonCheckBox("CPU Load %", self, "#00FFA2")
+        self.chk_cpu_load.setChecked(True)
+        self.chk_cpu_load.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_cpu_load)
+
+        self.chk_cpu_temp = NeonCheckBox("CPU Temp (°C)", self, "#00FFA2")
+        self.chk_cpu_temp.setChecked(True)
+        self.chk_cpu_temp.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_cpu_temp)
+
+        self.chk_cpu_clock = NeonCheckBox("CPU Clock (GHz)", self, "#00FFA2")
+        self.chk_cpu_clock.setChecked(True)
+        self.chk_cpu_clock.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_cpu_clock)
+
+        self.chk_gpu_load = NeonCheckBox("GPU Load %", self, "#00DFFF")
+        self.chk_gpu_load.setChecked(True)
+        self.chk_gpu_load.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_gpu_load)
+
+        self.chk_gpu_temp = NeonCheckBox("GPU Temp (°C)", self, "#00DFFF")
+        self.chk_gpu_temp.setChecked(True)
+        self.chk_gpu_temp.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_gpu_temp)
+
+        self.chk_gpu_vram = NeonCheckBox("GPU VRAM %", self, "#00DFFF")
+        self.chk_gpu_vram.setChecked(True)
+        self.chk_gpu_vram.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_gpu_vram)
+
+        self.chk_ram_load = NeonCheckBox("RAM Usage %", self, "#FF9A00")
+        self.chk_ram_load.setChecked(True)
+        self.chk_ram_load.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_ram_load)
+
+        self.chk_ram_size = NeonCheckBox("RAM Size (GB)", self, "#FF9A00")
+        self.chk_ram_size.setChecked(True)
+        self.chk_ram_size.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_ram_size)
+
+        self.chk_net_speed = NeonCheckBox("Network Speed", self, "#FF9A00")
+        self.chk_net_speed.setChecked(True)
+        self.chk_net_speed.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_net_speed)
+
+        self.chk_disk_load = NeonCheckBox("Disk Usage %", self, "#FFAA00")
+        self.chk_disk_load.setChecked(True)
+        self.chk_disk_load.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_disk_load)
+
+        self.chk_disk_free = NeonCheckBox("Disk Free %", self, "#FFAA00")
+        self.chk_disk_free.setChecked(True)
+        self.chk_disk_free.stateChanged.connect(self.sync_active_cards)
+        hw_layout.addWidget(self.chk_disk_free)
+
         
         # Cycle rotation duration slider
         lbl_cycle = QLabel("Dashboard Rotation Loop (sec):")
@@ -423,14 +490,33 @@ class MainWindow(QMainWindow):
         mask = 0
         if self.chk_cpu.isChecked(): mask |= 0x01
         if self.chk_gpu.isChecked(): mask |= 0x02
-        if self.chk_sys.isChecked(): mask |= 0x04
+        if self.chk_ram.isChecked(): mask |= 0x04
+        if self.chk_disk.isChecked(): mask |= 0x08
+        
+        # Disk options & net speed packed in upper bits of active_cards mask
+        if self.chk_disk_load.isChecked(): mask |= 0x10
+        if self.chk_disk_free.isChecked(): mask |= 0x20
+        if self.chk_net_speed.isChecked(): mask |= 0x40
         
         self.active_cards_mask = mask
+
+        options = 0
+        if self.chk_cpu_load.isChecked(): options |= 0x01
+        if self.chk_cpu_temp.isChecked(): options |= 0x02
+        if self.chk_cpu_clock.isChecked(): options |= 0x04
+        if self.chk_gpu_load.isChecked(): options |= 0x08
+        if self.chk_gpu_temp.isChecked(): options |= 0x10
+        if self.chk_gpu_vram.isChecked(): options |= 0x20
+        if self.chk_ram_load.isChecked(): options |= 0x40
+        if self.chk_ram_size.isChecked(): options |= 0x80
+
+        self.active_options_mask = options
         cycle_sec = self.slider_cycle.value()
         self.lbl_cycle_val.setText(f"Rotation Time: {cycle_sec} seconds")
         
         # Sync configurations to the visual simulator
-        self.simulator.set_config(mask, cycle_sec)
+        self.simulator.set_config(mask, cycle_sec, options)
+
 
     def start_diagnostics(self):
         """Launches the background QThread diagnostics polling loop."""
@@ -480,7 +566,8 @@ class MainWindow(QMainWindow):
                 net_ul=telemetry["net_ul"],
                 active_cards=self.active_cards_mask,
                 cycle_sec=self.slider_cycle.value(),
-                uptime_sec=telemetry["uptime"]
+                uptime_sec=telemetry["uptime"],
+                active_options=self.active_options_mask
             )
             self.serial_manager.send_packet(packet)
 
