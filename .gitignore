@@ -1,0 +1,53 @@
+# Python Caches & Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*,cover
+.hypothesis/
+.pytest_cache/
+
+# PyInstaller / Build Artifacts
+build/
+dist/
+*.manifest
+*.spec
+
+# Arduino / Microcontroller Compiles
+*.o
+*.d
+*.a
+*.elf
+*.bin
+*.hex
+*.map
+*.uf2
+pico_firmware/build/
+pico_firmware/libraries/
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE Configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
